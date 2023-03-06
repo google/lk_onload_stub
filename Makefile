@@ -22,5 +22,5 @@ test: all
 	@echo "without preload .."
 	@./test_lk_onload_stub
 	@echo "with preload .."
-	@LD_PRELOAD=./liblk_onload_stub.so ./test_lk_onload_stub && echo OK
+	@LD_PRELOAD=./liblk_onload_stub.so LKOS_LOG_FD=2 ./test_lk_onload_stub && echo OK
 
