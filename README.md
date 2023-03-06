@@ -14,6 +14,21 @@ original behavior.
 Linux recv, recvfrom, recvmsg, recvmmsg all support passing this flag,
 for both TCP and UDP sockets.
 
+### SO\_TIMESTAMPING: raw hardware timestamps
+
+Support requesting `SOF_TIMESTAMPING_RAW_HARDWARE` requests even on
+devices that do not implement this feature.
+
+Intercept setsockopt `SO_TIMESTAMPING` requests to rewrite as a
+request for software timestamps.
+
+A follow-on patch will intercept recvmsg timestamps to convert
+software timestamps to appear to be hardware timestamps.
+
+A follow-on patch will intercept getsockopt to return the same
+`SO_TIMESTAMPING` flags as previously set by setsockopt, even if
+intercepted.
+
 ## Background
 
 [Onload](https://github.com/Xilinx-CNS/onload) is a high performance

@@ -34,11 +34,17 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <linux/errqueue.h>		/* after time.h, for timespec */
+#include <linux/net_tstamp.h>
+
 #include "lk_onload_stub_ext.h"
 
 /* file scope definitions */
 
 static int lkos_log_fd;		/* 0 (STDIN_FILENO) means disabled */
+
+static int (*setsockopt_fn)(int sockfd, int level, int optname,
+			    const void *optval, socklen_t optlen);
 
 /* library support functions */
 
@@ -97,9 +103,71 @@ static void lkos_init_log(void)
 static void __attribute__((constructor)) lkos_init(void)
 {
 	lkos_init_log();
+
+	setsockopt_fn = lkos_dlsym("setsockopt");
 }
 
 
 /* intercepted functions */
 
+/* optval is defined as const, but not here, as it may be modified. */
+static int __setsockopt_timestamping(int sockfd, void *optval, socklen_t optlen)
+{
+	const int hw_tx = SOF_TIMESTAMPING_TX_HARDWARE |
+			  SOF_TIMESTAMPING_RAW_HARDWARE;
+	const int sw_tx = SOF_TIMESTAMPING_TX_SOFTWARE |
+			  SOF_TIMESTAMPING_SOFTWARE;
+	const int hw_rx = SOF_TIMESTAMPING_RX_HARDWARE |
+			  SOF_TIMESTAMPING_RAW_HARDWARE;
+	const int sw_rx = SOF_TIMESTAMPING_RX_SOFTWARE |
+			  SOF_TIMESTAMPING_SOFTWARE;
 
+	struct so_timestamping ts = *(struct so_timestamping *)optval;
+
+	if (optlen != sizeof(ts) && optlen != sizeof(ts.flags))
+		return lkos_error(EINVAL, NULL);
+
+	/* Convert hardware timestamp recording requests to software.
+	 *
+	 * SO_TIMESTAMPING combines
+	 * - recording options, such as SOF_TIMESTAMPING_TX_HARDWARE
+	 * - reporting options, such as SOF_TIMESTAMPING_RAW_HARDWARE
+	 * see Documentation/networking/timestamping.rst for details.
+	 *
+	 * If only hardware timestamping is requested,
+	 * - convert the record flag to software and
+	 * - enable the software report flag.
+	 * to start receiving software timestamps.
+	 *
+	 * Keep the hardware report flag. We will use that in getsockopt
+	 * as a hint that hardware timestamping was originally requested
+	 * and we converted it here. This is a hopefully decent heuristic,
+	 * because requesting a report without matching record is a noop,
+	 * and thus not something normal applications would do. That said,
+	 * the approach *is* a heuristic, so not foolproof: getsockopt
+	 * might convert incorrectly in some cases.
+	 */
+	if ((ts.flags & (sw_tx | sw_rx)) == 0) {
+		if ((ts.flags & hw_tx) == hw_tx) {
+			ts.flags &= ~SOF_TIMESTAMPING_TX_HARDWARE;
+			ts.flags |= sw_tx;
+		}
+
+		if ((ts.flags & hw_rx) == hw_rx) {
+			ts.flags &= ~SOF_TIMESTAMPING_RX_HARDWARE;
+			ts.flags |= sw_rx;
+		}
+	}
+
+	return setsockopt_fn(sockfd, SOL_SOCKET, SO_TIMESTAMPING, &ts, optlen);
+}
+
+int setsockopt(int sockfd, int level, int optname,
+	       const void *optval, socklen_t optlen)
+{
+	if (level == SOL_SOCKET &&
+	    optname == SO_TIMESTAMPING)
+		return __setsockopt_timestamping(sockfd, (void *)optval, optlen);
+
+	return setsockopt_fn(sockfd, level, optname, optval, optlen);
+}

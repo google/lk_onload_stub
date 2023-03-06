@@ -18,6 +18,7 @@
 #include <errno.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/errqueue.h>
 #include <linux/net_tstamp.h>
 #include <netinet/ip.h>
 #include <netinet/ip6.h>
@@ -162,6 +163,144 @@ static int test_recv_msg_onepkt(int domain, int type)
 	return 0;
 }
 
+static int test_setsockopt_timestamping_ctrl(int domain, int type)
+{
+	int fd, val;
+
+	fd = socket(domain, type, 0);
+	if (fd == -1)
+		return fail_errno();
+
+	/* setsockopt will register request for timestamp types, even when
+	 * hardware lacks support and will not generate the timestamps.
+	 */
+	val = SOF_TIMESTAMPING_SOFTWARE |
+	      SOF_TIMESTAMPING_RX_SOFTWARE |
+	      SOF_TIMESTAMPING_TX_SOFTWARE |
+	      SOF_TIMESTAMPING_RAW_HARDWARE |
+	      SOF_TIMESTAMPING_TX_HARDWARE |
+	      SOF_TIMESTAMPING_RX_HARDWARE;
+
+	if (setsockopt(fd, SOL_SOCKET, SO_TIMESTAMPING, &val, sizeof(val)))
+		return fail_errno();
+
+	if (close(fd))
+		return fail_errno();
+
+	return 0;
+}
+
+static int recvmsg_tstamp_cmsg(struct msghdr *msg)
+{
+	struct scm_timestamping *tss;
+	struct cmsghdr *cm;
+
+	for (cm = CMSG_FIRSTHDR(msg); cm; cm = CMSG_NXTHDR(msg, cm)) {
+		if (cm->cmsg_level == SOL_SOCKET &&
+		    cm->cmsg_type == SCM_TIMESTAMPING)
+			tss = (void *) CMSG_DATA(cm);
+	}
+
+	fprintf(stderr, "%s: sw=%lu.%lu hw=%lu.%lu\n",
+		__func__,
+		tss->ts[0].tv_sec, tss->ts[0].tv_nsec / 1000UL,
+		tss->ts[2].tv_sec, tss->ts[2].tv_nsec / 1000UL);
+
+	if (has_preload) {
+		if (tss->ts[0].tv_sec != tss->ts[2].tv_sec ||
+		    tss->ts[0].tv_nsec != tss->ts[2].tv_nsec)
+			return fail_str("hw stamp does not match sw tstamp");
+	} else {
+		if (tss->ts[2].tv_sec || tss->ts[2].tv_nsec)
+			return fail_str("non-zero hw stamp on loopback");
+	}
+
+	return 0;
+}
+
+static int recvmsg_tstamp(int fd, int flags)
+{
+        char ctrl[CMSG_SPACE(sizeof(struct scm_timestamping)) +
+                  CMSG_SPACE(sizeof(struct sock_extended_err)) +
+                  CMSG_SPACE(sizeof(struct sockaddr_in6))] = {0};
+	struct msghdr msg = {0};
+	struct iovec iov;
+	char data[2];
+	int ret;
+
+	iov.iov_base = data;
+	iov.iov_len = sizeof(data);
+
+	msg.msg_iov = &iov;
+	msg.msg_iovlen = 1;
+
+	msg.msg_control = ctrl;
+	msg.msg_controllen = sizeof(ctrl);
+
+	ret = recvmsg(fd, &msg, flags);
+	if (ret == -1)
+		return fail_errno();
+	if (flags == 0 && ret != 1)
+		return fail_str("recvmsg: wrong length: expect 1 on rx");
+	if (flags == MSG_ERRQUEUE && ret != 0)
+		return fail_str("recvmsg: wrong length: expect 0 on tx TSONLY");
+
+	ret = recvmsg_tstamp_cmsg(&msg);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
+/* Request timestamps from the loopback device
+ *
+ * Loopback does not support hardware timestamps
+ * - verify that these are not returned without has_preload
+ * - verify that these are the same as sw with has_preload
+ */
+static int test_setsockopt_timestamping_data(int domain, int type)
+{
+	int fdt, fdr, ret, val;
+
+	ret = socketpair_open(domain, type, &fdt, &fdr);
+	if (ret)
+		return ret;
+
+	val = SOF_TIMESTAMPING_SOFTWARE |
+	      SOF_TIMESTAMPING_RX_SOFTWARE |
+	      SOF_TIMESTAMPING_TX_SOFTWARE |
+	      SOF_TIMESTAMPING_RAW_HARDWARE |
+	      SOF_TIMESTAMPING_TX_HARDWARE |
+	      SOF_TIMESTAMPING_RX_HARDWARE |
+	      SOF_TIMESTAMPING_OPT_TSONLY;
+
+	if (setsockopt(fdt, SOL_SOCKET, SO_TIMESTAMPING, &val, sizeof(val)))
+		return fail_errno();
+	if (setsockopt(fdr, SOL_SOCKET, SO_TIMESTAMPING, &val, sizeof(val)))
+		return fail_errno();
+
+	/* wait for static_branch netstamp_needed_key to be enabled */
+	usleep(10 * 1000);
+
+	if (write(fdt, "a", 1) != 1)
+		return fail_errno();
+
+	ret = recvmsg_tstamp(fdr, 0);
+	if (ret)
+		return ret;
+
+	ret = recvmsg_tstamp(fdt, MSG_ERRQUEUE);
+	if (ret)
+		return ret;
+
+	if (close(fdr))
+		return fail_errno();
+	if (close(fdt))
+		return fail_errno();
+
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	const int domains[] = { PF_INET, PF_INET6, 0 }, *p_domain;
@@ -175,6 +314,8 @@ int main(int argc, char **argv)
 	for (p_domain = domains; *p_domain; p_domain++) {
 		for (p_type = types; *p_type; p_type++) {
 			ret |= test_recv_msg_onepkt(*p_domain, *p_type);
+			ret |= test_setsockopt_timestamping_ctrl(*p_domain, *p_type);
+			ret |= test_setsockopt_timestamping_data(*p_domain, *p_type);
 		}
 	}
 
