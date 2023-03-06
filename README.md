@@ -9,7 +9,10 @@ original behavior.
 
 ## Supported Features
 
-This section will be filled in with future feature patches.
+### MSG\_ONEPKT
+
+Linux recv, recvfrom, recvmsg, recvmmsg all support passing this flag,
+for both TCP and UDP sockets.
 
 ## Background
 

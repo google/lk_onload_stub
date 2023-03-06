@@ -80,13 +80,103 @@ static int test_dlsym(void)
 	return 0;
 }
 
+static int socketpair_open(int domain, int type, int *fdt_p, int *fdr_p)
+{
+	struct sockaddr_in addr4 = {0};
+	struct sockaddr_in6 addr6 = {0};
+	struct sockaddr *addr;
+	socklen_t alen;
+	int fdt, fdr;
+
+	fdt = socket(domain, type, 0);
+	if (fdt == -1)
+		return fail_errno();
+	fdr = socket(domain, type, 0);
+	if (fdr == -1)
+		return fail_errno();
+
+	if (domain == PF_INET6) {
+		addr6.sin6_family = domain;
+		addr6.sin6_port = 0;
+		addr6.sin6_addr = in6addr_loopback;
+		alen = sizeof(addr6);
+		addr = (void *)&addr6;
+	} else {
+		addr4.sin_family = domain;
+		addr4.sin_port = 0;
+		addr4.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+		alen = sizeof(addr4);
+		addr = (void *)&addr4;
+	}
+	if (bind(fdr, addr, alen))
+		return fail_errno();
+	if (getsockname(fdr, addr, &alen))
+		return fail_errno();
+	if (type == SOCK_STREAM) {
+		if (listen(fdr, 1))
+			return fail_errno();
+	}
+	if (connect(fdt, addr, alen))
+		return fail_errno();
+
+	if (type == SOCK_STREAM) {
+		int fdl = fdr;
+
+		fdr = accept(fdl, NULL, NULL);
+		if (fdr == -1)
+			return fail_errno();
+		if (close(fdl))
+			return fail_errno();
+	}
+
+	*fdt_p = fdt;
+	*fdr_p = fdr;
+
+	return 0;
+}
+
+static int test_recv_msg_onepkt(int domain, int type)
+{
+	char rxbuf[2];
+	int fdt, fdr, ret;
+
+	ret = socketpair_open(domain, type, &fdt, &fdr);
+	if (ret)
+		return ret;
+
+	if (write(fdt, "a", 1) != 1)
+		return fail_errno();
+	if (recv(fdr, rxbuf, sizeof(rxbuf), 0) != 1)
+		return fail_errno();
+
+	if (write(fdt, "a", 1) != 1)
+		return fail_errno();
+	if (recv(fdr, rxbuf, sizeof(rxbuf), ONLOAD_MSG_ONEPKT) != 1)
+		return fail_errno();
+
+	if (close(fdr))
+		return fail_errno();
+	if (close(fdt))
+		return fail_errno();
+
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
+	const int domains[] = { PF_INET, PF_INET6, 0 }, *p_domain;
+	const int types[] = { SOCK_STREAM, SOCK_DGRAM, 0 }, *p_type;
 	int ret = 0;
 
 	has_preload = getenv("LD_PRELOAD");
 
 	ret |= test_dlsym();
+
+	for (p_domain = domains; *p_domain; p_domain++) {
+		for (p_type = types; *p_type; p_type++) {
+			ret |= test_recv_msg_onepkt(*p_domain, *p_type);
+		}
+	}
 
 	return !!ret;
 }

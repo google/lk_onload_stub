@@ -25,5 +25,14 @@
 #ifdef HAVE_ONLOAD
 #include <onload/extensions.h>
 #else
+/* Linux TCP ignores flags it does not expect.
+ * It is safe to pass this flag to a tcp socket recv call.
+ *
+ * This flag does alias a flag in Linux: MSG_SENDPAGE_NOTLAST.
+ * Introduced in v3.4 in commit 35f9c09fe9c7
+ * ("tcp: tcp_sendpages() should call tcp_push() once")
+ * That flag is internal to Linux and only used in sendpage.
+ */
+#define ONLOAD_MSG_ONEPKT 0x20000
 #endif
 
