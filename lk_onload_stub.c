@@ -43,6 +43,8 @@
 
 static int lkos_log_fd;		/* 0 (STDIN_FILENO) means disabled */
 
+static int (*getsockopt_fn)(int sockfd, int level, int optname,
+			    void *optval, socklen_t *optlen);
 static int (*setsockopt_fn)(int sockfd, int level, int optname,
 			    const void *optval, socklen_t optlen);
 
@@ -104,11 +106,57 @@ static void __attribute__((constructor)) lkos_init(void)
 {
 	lkos_init_log();
 
+	getsockopt_fn = lkos_dlsym("getsockopt");
 	setsockopt_fn = lkos_dlsym("setsockopt");
 }
 
 
 /* intercepted functions */
+
+static int __getsockopt_timestamping(int sockfd, void *optval, socklen_t *optlen)
+{
+	struct so_timestamping *ts = (struct so_timestamping *)optval;
+	int ret;
+
+	ret = getsockopt_fn(sockfd, SOL_SOCKET, SO_TIMESTAMPING, optval, optlen);
+	if (ret)
+		return ret;
+
+	if (*optlen != sizeof(*ts) && *optlen != sizeof(ts->flags))
+		return lkos_error(EINVAL, NULL);
+
+	/* See __setsockopt_timestamping for matching code
+	 *
+	 * If hardware timestamp reporting is enabled, but no recording,
+	 * then it is likely a conversion by that function. Invert when
+	 * returning the current flags in getsockopt.
+	 */
+	if (ts->flags & SOF_TIMESTAMPING_RAW_HARDWARE &&
+	    !(ts->flags & SOF_TIMESTAMPING_TX_HARDWARE) &&
+	    !(ts->flags & SOF_TIMESTAMPING_RX_HARDWARE)) {
+		if (ts->flags & SOF_TIMESTAMPING_RX_SOFTWARE) {
+			ts->flags |= SOF_TIMESTAMPING_RX_HARDWARE;
+			ts->flags &= ~(SOF_TIMESTAMPING_RX_SOFTWARE |
+				       SOF_TIMESTAMPING_SOFTWARE);
+		} if (ts->flags & SOF_TIMESTAMPING_TX_SOFTWARE) {
+			ts->flags |= SOF_TIMESTAMPING_TX_HARDWARE;
+			ts->flags &= ~(SOF_TIMESTAMPING_TX_SOFTWARE |
+				       SOF_TIMESTAMPING_SOFTWARE);
+		}
+	}
+
+	return 0;
+}
+
+int getsockopt(int sockfd, int level, int optname,
+	       void *optval, socklen_t *optlen)
+{
+	if (level == SOL_SOCKET &&
+	    optname == SO_TIMESTAMPING)
+		return __getsockopt_timestamping(sockfd, optval, optlen);
+
+	return getsockopt_fn(sockfd, level, optname, optval, optlen);
+}
 
 /* optval is defined as const, but not here, as it may be modified. */
 static int __setsockopt_timestamping(int sockfd, void *optval, socklen_t optlen)

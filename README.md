@@ -25,9 +25,8 @@ request for software timestamps.
 A follow-on patch will intercept recvmsg timestamps to convert
 software timestamps to appear to be hardware timestamps.
 
-A follow-on patch will intercept getsockopt to return the same
-`SO_TIMESTAMPING` flags as previously set by setsockopt, even if
-intercepted.
+Intercept getsockopt `SO_TIMESTAMPING` requests to convert the
+response to return the flags as originally passed to setsockopt.
 
 ## Background
 

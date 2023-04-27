@@ -81,6 +81,60 @@ static int test_dlsym(void)
 	return 0;
 }
 
+static int test_getsockopt_timestamping_val(int domain, int type, int val)
+{
+	socklen_t slen;
+	int fd, get;
+
+	fd = socket(domain, type, 0);
+	if (fd == -1)
+		return fail_errno();
+
+	if (setsockopt(fd, SOL_SOCKET, SO_TIMESTAMPING, &val, sizeof(val)))
+		return fail_errno();
+
+	slen = sizeof(get);
+	if (getsockopt(fd, SOL_SOCKET, SO_TIMESTAMPING, &get, &slen))
+		return fail_errno();
+	if (slen != sizeof(get))
+		return fail_str("getsockopt: invalid socklen");
+
+	if (get != val)
+		return fail_str("getsockopt: unexpected value");
+
+	if (close(fd))
+		return fail_errno();
+
+	return 0;
+}
+
+static int test_getsockopt_timestamping(int domain, int type)
+{
+	const int hw_rx = SOF_TIMESTAMPING_RAW_HARDWARE |
+		          SOF_TIMESTAMPING_RX_HARDWARE;
+	const int hw_tx = SOF_TIMESTAMPING_RAW_HARDWARE |
+		          SOF_TIMESTAMPING_TX_HARDWARE;
+	const int sw_rx = SOF_TIMESTAMPING_SOFTWARE |
+		          SOF_TIMESTAMPING_RX_SOFTWARE;
+	const int sw_tx = SOF_TIMESTAMPING_SOFTWARE |
+		          SOF_TIMESTAMPING_TX_SOFTWARE;
+	const int hw = hw_rx | hw_tx;
+	const int sw = sw_rx | sw_tx;
+	const int rx = sw_rx | hw_rx;
+	const int all = hw | sw;
+
+	int ret = 0;
+
+	ret |= test_getsockopt_timestamping_val(domain, type, hw_rx);
+	ret |= test_getsockopt_timestamping_val(domain, type, sw_rx);
+	ret |= test_getsockopt_timestamping_val(domain, type, hw);
+	ret |= test_getsockopt_timestamping_val(domain, type, sw);
+	ret |= test_getsockopt_timestamping_val(domain, type, rx);
+	ret |= test_getsockopt_timestamping_val(domain, type, all);
+
+	return ret;
+}
+
 static int socketpair_open(int domain, int type, int *fdt_p, int *fdr_p)
 {
 	struct sockaddr_in addr4 = {0};
@@ -313,6 +367,7 @@ int main(int argc, char **argv)
 
 	for (p_domain = domains; *p_domain; p_domain++) {
 		for (p_type = types; *p_type; p_type++) {
+			ret |= test_getsockopt_timestamping(*p_domain, *p_type);
 			ret |= test_recv_msg_onepkt(*p_domain, *p_type);
 			ret |= test_setsockopt_timestamping_ctrl(*p_domain, *p_type);
 			ret |= test_setsockopt_timestamping_data(*p_domain, *p_type);
