@@ -20,7 +20,7 @@ test_%: test_%.c lib
 
 test: all
 	@echo "without preload .."
-	@./test_lk_onload_stub
+	@LD_LIBRARY_PATH=. ./test_lk_onload_stub
 	@echo "with preload .."
-	@LD_PRELOAD=./liblk_onload_stub.so LKOS_LOG_FD=2 ./test_lk_onload_stub && echo OK
+	@LD_LIBRARY_PATH=. LD_PRELOAD=./liblk_onload_stub.so LKOS_LOG_FD=2 ./test_lk_onload_stub && echo OK
 

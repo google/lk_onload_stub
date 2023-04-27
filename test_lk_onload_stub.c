@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/epoll.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -133,6 +134,59 @@ static int test_getsockopt_timestamping(int domain, int type)
 	ret |= test_getsockopt_timestamping_val(domain, type, all);
 
 	return ret;
+}
+
+static int test_onload_ordered_epoll_wait(int domain, int type)
+{
+#define NUM_REVENTS 2
+	struct epoll_event ev = { .events = EPOLLOUT }, rev[NUM_REVENTS];
+	struct onload_ordered_epoll_event oo_rev[NUM_REVENTS];
+	int fda, fdb, epoll_fd, ret, i;
+
+	fda = socket(domain, type, 0);
+	if (fda == -1)
+		return fail_errno();
+	fdb = socket(domain, type, 0);
+	if (fdb == -1)
+		return fail_errno();
+
+	epoll_fd = epoll_create1(0);
+
+	ev.data.fd = fda;
+	if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fda, &ev))
+		return fail_errno();
+	ev.data.fd = fdb;
+	if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fdb, &ev))
+		return fail_errno();
+
+	ret = epoll_wait(epoll_fd, rev, NUM_REVENTS, 1);
+	if (ret == -1)
+		return fail_errno();
+	if (ret != 2)
+		return fail_str("epoll_wait: count");
+
+	ret = onload_ordered_epoll_wait(epoll_fd, rev, oo_rev, NUM_REVENTS, 1);
+	if (has_preload) {
+		if (ret == -1)
+			return fail_errno();
+		if (ret != 2)
+			return fail_str("onload_ordered_epoll_wait: count");
+		for (i = 0; i < ret; i++)
+			if (oo_rev[i].ts.tv_sec)
+				return fail_str("onload_ordered_epoll_wait: non-zero ts");
+	} else {
+		if (ret != -1)
+			return fail_str("onload_ordered_epoll_wait: expected fail");
+	}
+
+	if (close(epoll_fd))
+		return fail_errno();
+	if (close(fdb))
+		return fail_errno();
+	if (close(fda))
+		return fail_errno();
+
+	return 0;
 }
 
 static int socketpair_open(int domain, int type, int *fdt_p, int *fdr_p)
@@ -368,6 +422,7 @@ int main(int argc, char **argv)
 	for (p_domain = domains; *p_domain; p_domain++) {
 		for (p_type = types; *p_type; p_type++) {
 			ret |= test_getsockopt_timestamping(*p_domain, *p_type);
+			ret |= test_onload_ordered_epoll_wait(*p_domain, *p_type);
 			ret |= test_recv_msg_onepkt(*p_domain, *p_type);
 			ret |= test_setsockopt_timestamping_ctrl(*p_domain, *p_type);
 			ret |= test_setsockopt_timestamping_data(*p_domain, *p_type);

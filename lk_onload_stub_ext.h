@@ -22,6 +22,8 @@
  * Therefore all functions here return with error.
  */
 
+#include <time.h>
+
 #ifdef HAVE_ONLOAD
 #include <onload/extensions.h>
 #else
@@ -34,5 +36,14 @@
  * That flag is internal to Linux and only used in sendpage.
  */
 #define ONLOAD_MSG_ONEPKT 0x20000
+
+struct onload_ordered_epoll_event {
+	struct timespec ts;
+	int bytes;
+};
+
+int onload_ordered_epoll_wait(int epfd, struct epoll_event *events,
+			      struct onload_ordered_epoll_event *oo_events,
+			      int maxevents, int timeout);
 #endif
 

@@ -22,4 +22,13 @@
  * Therefore all functions here return with error.
  */
 
+#include <sys/epoll.h>
+
 #include "lk_onload_stub_ext.h"
+
+int onload_ordered_epoll_wait(int epfd, struct epoll_event *events,
+			      struct onload_ordered_epoll_event *oo_events,
+			      int maxevents, int timeout)
+{
+	return -1;
+}

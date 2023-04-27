@@ -28,6 +28,13 @@ hardware timestamps.
 Intercept getsockopt `SO_TIMESTAMPING` requests to convert the
 response to return the flags as originally passed to setsockopt.
 
+### WODA: wire order delivery API
+
+The library exports symbol `onload_ordered_epoll_wait` as defined by
+the wire order delivery API ("WODA").
+
+It does NOT implement the WODA behavior.
+
 ## Background
 
 [Onload](https://github.com/Xilinx-CNS/onload) is a high performance

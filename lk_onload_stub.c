@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/epoll.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -161,6 +162,21 @@ int getsockopt(int sockfd, int level, int optname,
 		return __getsockopt_timestamping(sockfd, optval, optlen);
 
 	return getsockopt_fn(sockfd, level, optname, optval, optlen);
+}
+
+int onload_ordered_epoll_wait(int epfd, struct epoll_event *events,
+			      struct onload_ordered_epoll_event *oo_events,
+			      int maxevents, int timeout)
+{
+	int i, ret;
+
+	ret = epoll_wait(epfd, events, maxevents, timeout);
+
+	/* tv_sec == 0 disables wire-order, defined in onload_extensions.h */
+	for (i = 0; i < ret; i++)
+		oo_events[i].ts.tv_sec = 0;
+
+	return ret;
 }
 
 static void __recvmsg_timestamping(struct msghdr *msg)
