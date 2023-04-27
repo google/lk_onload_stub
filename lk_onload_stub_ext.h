@@ -45,5 +45,17 @@ struct onload_ordered_epoll_event {
 int onload_ordered_epoll_wait(int epfd, struct epoll_event *events,
 			      struct onload_ordered_epoll_event *oo_events,
 			      int maxevents, int timeout);
+
+/* Stacks API */
+int onload_move_fd(int fd);
+int onload_set_stackname(int who, int scope, const char* stackname);
+int onload_stackname_restore(void);
+int onload_stackname_save(void);
+int onload_stack_opt_get_int(const char* opt, int64_t *val);
+int onload_stack_opt_get_str(const char* opt, char* val_out, size_t* val_out_len);
+int onload_stack_opt_reset(void);
+int onload_stack_opt_set_int(const char* opt, int64_t val);
+int onload_stack_opt_set_str(const char* opt, const char* val);
+
 #endif
 

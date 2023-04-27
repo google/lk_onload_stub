@@ -189,6 +189,58 @@ static int test_onload_ordered_epoll_wait(int domain, int type)
 	return 0;
 }
 
+static int test_onload_stacks_api(int domain, int type)
+{
+	char data_get_str[128];
+	int64_t data_get_int;
+	size_t len_get_str;
+	int fd;
+
+	/* not supported without preload: skip */
+	if (!has_preload)
+		return 0;
+
+	if (onload_set_stackname(0, 0, "test1"))
+		return fail_str("onload_set_stackname");
+
+	if (onload_stackname_save())
+		return fail_str("onload_stackname_save");
+
+	if (onload_set_stackname(0, 0, "test2"))
+		return fail_str("onload_set_stackname");
+
+	if (onload_stack_opt_set_int("EF_SPIN_USEC", 10))
+		return fail_str("onload_stack_opt_set_int");
+
+	if (onload_stack_opt_set_str("EF_SCALABLE_FILTERS", "eth0"))
+		return fail_str("onload_stack_opt_set_str");
+
+	if (onload_stack_opt_get_int("EF_SPIN_USEC", &data_get_int) != -1)
+		return fail_str("onload_stack_opt_get_int: not failing as expected");
+
+	len_get_str = sizeof(data_get_str);
+	if (onload_stack_opt_get_str("EF_SCALABLE_FILTERS", data_get_str, &len_get_str) != -1)
+		return fail_str("onload_stack_opt_get_str: not failing as expected");
+
+	fd = socket(domain, type, 0);
+	if (fd == -1)
+		return fail_errno();
+
+	if (onload_stack_opt_reset())
+		return fail_str("onload_stack_opt_reset");
+
+	if (onload_stackname_restore())
+		return fail_str("onload_stackname_restore");
+
+	if (onload_move_fd(fd))
+		return fail_str("onload_move_fd");
+
+	if (close(fd))
+		return fail_errno();
+
+	return 0;
+}
+
 static int socketpair_open(int domain, int type, int *fdt_p, int *fdr_p)
 {
 	struct sockaddr_in addr4 = {0};
@@ -423,6 +475,7 @@ int main(int argc, char **argv)
 		for (p_type = types; *p_type; p_type++) {
 			ret |= test_getsockopt_timestamping(*p_domain, *p_type);
 			ret |= test_onload_ordered_epoll_wait(*p_domain, *p_type);
+			ret |= test_onload_stacks_api(*p_domain, *p_type);
 			ret |= test_recv_msg_onepkt(*p_domain, *p_type);
 			ret |= test_setsockopt_timestamping_ctrl(*p_domain, *p_type);
 			ret |= test_setsockopt_timestamping_data(*p_domain, *p_type);

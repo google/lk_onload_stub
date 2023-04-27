@@ -28,6 +28,26 @@ hardware timestamps.
 Intercept getsockopt `SO_TIMESTAMPING` requests to convert the
 response to return the flags as originally passed to setsockopt.
 
+### Stacks API
+
+Export the stack manipulation API:
+
+* onload\_move\_fd
+* onload\_set\_stackname
+* onload\_stackname\_save
+* onload\_stackname\_restore
+* onload\_stack\_opt\_get\_int
+* onload\_stack\_opt\_get\_str
+* onload\_stack\_opt\_reset
+* onload\_stack\_opt\_set\_int
+* onload\_stack\_opt\_set\_str
+
+These stub implementations are entirely noops:
+
+* set requests do not actually store state.
+* get requests return error as a result.
+* all sockets always use the same Linux kernel TCP/IP stack.
+
 ### WODA: wire order delivery API
 
 The library exports symbol `onload_ordered_epoll_wait` as defined by
