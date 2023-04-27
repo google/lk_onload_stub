@@ -22,8 +22,8 @@ devices that do not implement this feature.
 Intercept setsockopt `SO_TIMESTAMPING` requests to rewrite as a
 request for software timestamps.
 
-A follow-on patch will intercept recvmsg timestamps to convert
-software timestamps to appear to be hardware timestamps.
+Intercept recvmsg to convert software timestamps to appear to be
+hardware timestamps.
 
 Intercept getsockopt `SO_TIMESTAMPING` requests to convert the
 response to return the flags as originally passed to setsockopt.

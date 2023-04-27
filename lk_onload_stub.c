@@ -45,6 +45,9 @@ static int lkos_log_fd;		/* 0 (STDIN_FILENO) means disabled */
 
 static int (*getsockopt_fn)(int sockfd, int level, int optname,
 			    void *optval, socklen_t *optlen);
+static int (*recvmmsg_fn)(int sockfd, struct mmsghdr *msgvec, unsigned int vlen,
+			  int flags, struct timespec *timeout);
+static ssize_t (*recvmsg_fn)(int sockfd, struct msghdr *msg, int flags);
 static int (*setsockopt_fn)(int sockfd, int level, int optname,
 			    const void *optval, socklen_t optlen);
 
@@ -107,6 +110,8 @@ static void __attribute__((constructor)) lkos_init(void)
 	lkos_init_log();
 
 	getsockopt_fn = lkos_dlsym("getsockopt");
+	recvmmsg_fn = lkos_dlsym("recvmmsg");
+	recvmsg_fn = lkos_dlsym("recvmsg");
 	setsockopt_fn = lkos_dlsym("setsockopt");
 }
 
@@ -156,6 +161,57 @@ int getsockopt(int sockfd, int level, int optname,
 		return __getsockopt_timestamping(sockfd, optval, optlen);
 
 	return getsockopt_fn(sockfd, level, optname, optval, optlen);
+}
+
+static void __recvmsg_timestamping(struct msghdr *msg)
+{
+	struct scm_timestamping *tss;
+	struct cmsghdr *cm;
+
+	/* Unconditionally copy the sw timestamp from ts[0]
+	 * to the raw hw timestamp field ts[2]
+	 *
+	 * The fields are undefined if the relevant SOF_.. option was not set,
+	 * so it is safe to fill in both fields if only one at a time is set.
+	 */
+	for (cm = CMSG_FIRSTHDR(msg);
+	     cm && cm->cmsg_len;
+	     cm = CMSG_NXTHDR(msg, cm)) {
+		if (cm->cmsg_level == SOL_SOCKET &&
+		    cm->cmsg_type == SCM_TIMESTAMPING) {
+			tss = (void *) CMSG_DATA(cm);
+			tss->ts[2] = tss->ts[0];
+		}
+	}
+}
+
+ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags)
+{
+	ssize_t ret;
+
+	ret = recvmsg_fn(sockfd, msg, flags);
+
+	if (ret >= 0 && msg->msg_control && msg->msg_controllen)
+		__recvmsg_timestamping(msg);
+
+	return ret;
+}
+
+int recvmmsg(int sockfd, struct mmsghdr *msgvec, unsigned int vlen,
+	     int flags, struct timespec *timeout)
+{
+	int ret, i;
+
+	ret = recvmmsg_fn(sockfd, msgvec, vlen, flags, timeout);
+
+	for (i = 0; i < ret; i++) {
+		struct msghdr *mh = &msgvec[i].msg_hdr;
+
+		if (mh->msg_control && mh->msg_controllen)
+			__recvmsg_timestamping(mh);
+	}
+
+	return ret;
 }
 
 /* optval is defined as const, but not here, as it may be modified. */
