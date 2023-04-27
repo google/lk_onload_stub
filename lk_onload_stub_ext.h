@@ -57,5 +57,11 @@ int onload_stack_opt_reset(void);
 int onload_stack_opt_set_int(const char* opt, int64_t val);
 int onload_stack_opt_set_str(const char* opt, const char* val);
 
+/* non-accel API */
+
+int onload_fd_stat(int fd, void *unused);
+int onload_is_present(void);
+int onload_socket_nonaccel(int domain, int type, int protocol);
+
 #endif
 

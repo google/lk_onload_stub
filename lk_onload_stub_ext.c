@@ -26,6 +26,16 @@
 
 #include "lk_onload_stub_ext.h"
 
+int onload_fd_stat(int fd, void *unused)
+{
+	return -1;
+}
+
+int onload_is_present(void)
+{
+	return -1;
+}
+
 int onload_move_fd(int fd)
 {
 	return -1;
@@ -39,6 +49,11 @@ int onload_ordered_epoll_wait(int epfd, struct epoll_event *events,
 }
 
 int onload_set_stackname(int who, int scope, const char* stackname)
+{
+	return -1;
+}
+
+int onload_socket_nonaccel(int domain, int type, int protocol)
 {
 	return -1;
 }

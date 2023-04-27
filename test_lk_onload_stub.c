@@ -136,6 +136,42 @@ static int test_getsockopt_timestamping(int domain, int type)
 	return ret;
 }
 
+static int test_onload_nonaccel(int domain, int type)
+{
+	int fd;
+
+	/* Without the LD_PRELOAD, these calls will fall back to the
+	 * lk_onload_stub_ext.c functions, all of which return failure
+	 */
+	if (!has_preload)
+		return 0;
+
+	/* test onload_is_present */
+	if (onload_is_present())
+		return fail_str("onload_is_present: returns non-zero with LKOS");
+
+	/* test onload_fd_stat */
+	fd = socket(domain, type, 0);
+	if (fd == -1)
+		return fail_errno();
+
+	if (onload_fd_stat(fd, NULL))
+		return fail_str("onload_fd_stat: returns non-zero for non-accelerated socket");
+
+	if (close(fd))
+		return fail_errno();
+
+	/* test onload_socket_nonaccel */
+	fd = onload_socket_nonaccel(domain, type, 0);
+	if (fd == -1)
+		return fail_errno();
+
+	if (close(fd))
+		return fail_errno();
+
+	return 0;
+}
+
 static int test_onload_ordered_epoll_wait(int domain, int type)
 {
 #define NUM_REVENTS 2
@@ -474,6 +510,7 @@ int main(int argc, char **argv)
 	for (p_domain = domains; *p_domain; p_domain++) {
 		for (p_type = types; *p_type; p_type++) {
 			ret |= test_getsockopt_timestamping(*p_domain, *p_type);
+			ret |= test_onload_nonaccel(*p_domain, *p_type);
 			ret |= test_onload_ordered_epoll_wait(*p_domain, *p_type);
 			ret |= test_onload_stacks_api(*p_domain, *p_type);
 			ret |= test_recv_msg_onepkt(*p_domain, *p_type);

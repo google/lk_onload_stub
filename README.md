@@ -28,6 +28,20 @@ hardware timestamps.
 Intercept getsockopt `SO_TIMESTAMPING` requests to convert the
 response to return the flags as originally passed to setsockopt.
 
+### Non-accel API
+
+Export these symbols:
+
+* int onload\_fd\_stat
+      - returns 0 for non-accelerated fd
+      - in LKOS, always return 0
+* int onload\_is\_present
+      - boolean query
+      - in LKOS, always return 0 (false)
+* int onload\_socket\_nonaccel
+      - opens a non-accelerated socket
+      - in LKOS, call socket()
+
 ### Stacks API
 
 Export the stack manipulation API:

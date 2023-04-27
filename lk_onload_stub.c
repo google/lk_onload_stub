@@ -164,6 +164,16 @@ int getsockopt(int sockfd, int level, int optname,
 	return getsockopt_fn(sockfd, level, optname, optval, optlen);
 }
 
+int onload_fd_stat(int fd, void *unused)
+{
+	return 0;
+}
+
+int onload_is_present(void)
+{
+	return 0;
+}
+
 int onload_move_fd(int fd)
 {
 	return 0;
@@ -187,6 +197,11 @@ int onload_ordered_epoll_wait(int epfd, struct epoll_event *events,
 int onload_set_stackname(int who, int scope, const char* stackname)
 {
 	return 0;
+}
+
+int onload_socket_nonaccel(int domain, int type, int protocol)
+{
+	return socket(domain, type, protocol);
 }
 
 int onload_stackname_restore(void)
